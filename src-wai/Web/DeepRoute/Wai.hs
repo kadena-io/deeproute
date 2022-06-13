@@ -1,8 +1,16 @@
 {-# language BangPatterns #-}
 {-# language LambdaCase #-}
 {-# language OverloadedStrings #-}
+{-# language DerivingStrategies #-}
+{-# language GeneralizedNewtypeDeriving #-}
 
-module Web.DeepRoute.Wai where
+module Web.DeepRoute.Wai
+    ( responseJSON
+    , requestFromJSON
+    , routeWaiApp
+    , jsonApp
+    , getParams
+    ) where
 
 import Control.Exception
 -- import Control.Lens
@@ -50,6 +58,36 @@ requestFromJSON req =
         Nothing ->
             throwIO $ HTTPEarlyExitException badRequest400 (Just "invalid request body")
 
+newtype MT = MT MediaType
+    deriving newtype Show
+
+instance Accept MT where
+    parseAccept = fmap MT . parseAccept
+    matches (MT a) (MT b)
+        | mainType b == "*" = params
+        | subType b == "*"  = mainType a == mainType b && params
+        | otherwise         = (main && sub && params)
+      where
+        normalizedParameters mt
+            | mainType mt == "application"
+            , subType mt == "json"
+                = Map.alter (removeCharsetUtf8 mt) "charset" (parameters mt)
+            | otherwise = parameters mt
+        removeCharsetUtf8 mt (Just "utf-8") = Nothing
+        removeCharsetUtf8 mt p = p
+        main = mainType a == mainType b
+        sub = subType a == subType b
+        params = Map.null (normalizedParameters b) || normalizedParameters a == normalizedParameters b
+
+    moreSpecificThan (MT a) (MT b) = (a `matches` b &&) $
+        mainType a == "*" && anyB && params ||
+        subType a == "*" && (anyB || subB && params) ||
+        anyB || subB || params
+      where
+        anyB = mainType b == "*"
+        subB = subType b == "*"
+        params = not (Map.null $ parameters a) && Map.null (parameters b)
+
 routeWaiApp :: Route [(MediaType, Wai.Application)] -> Wai.Application
 routeWaiApp tree req resp = do
     let
@@ -57,7 +95,7 @@ routeWaiApp tree req resp = do
             runRoute tree lose id (Wai.requestMethod req) (Wai.pathInfo req)
         acceptHeader = lookup "Accept" (Wai.requestHeaders req)
     handle earlyExit $ case acceptHeader of
-        Just accept -> case parseAccept =<< mapAccept apps accept of
+        Just accept -> case mapAccept apps =<< parseAccept accept of
             Just (ct, app) -> app req (setContentType ct resp)
             Nothing -> errorWithStatus notAcceptable406 Nothing
         Nothing -> case apps of
@@ -91,7 +129,7 @@ jsonApp k req resp =
         =<< k
         =<< requestFromJSON req
 
-allParams :: Wai.Request -> (QueryText -> a) -> a
-allParams req parser = parser query
+getParams :: Wai.Request -> (QueryText -> a) -> a
+getParams req parser = parser query
     where
     query = queryToQueryText $ Wai.queryString req
