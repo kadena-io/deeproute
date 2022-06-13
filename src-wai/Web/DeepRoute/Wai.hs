@@ -13,9 +13,6 @@ module Web.DeepRoute.Wai
     ) where
 
 import Control.Exception
--- import Control.Lens
--- import Control.Monad.Catch hiding (bracket)
-import Control.Monad.Reader as Reader
 import Data.Aeson
 import Data.ByteString(ByteString)
 import qualified Data.ByteString as BS
@@ -23,8 +20,6 @@ import qualified Data.ByteString.Lazy as LBS
 import qualified Data.ByteString.Lazy.Internal as LBS
 import Data.CaseInsensitive(CI)
 import qualified Data.CaseInsensitive as CI
-import Data.DList(DList)
-import qualified Data.DList as DList
 import Data.Function
 import Data.Functor
 import Data.Functor.Identity
@@ -35,10 +30,6 @@ import Data.Map(Map)
 import qualified Data.Map as Map
 import Data.Text(Text)
 import qualified Data.Text.Encoding as T
-import Data.Functor.Compose
-import System.IO.Unsafe
-
-import GHC.Generics
 
 import Network.HTTP.Types
 import Network.HTTP.Media

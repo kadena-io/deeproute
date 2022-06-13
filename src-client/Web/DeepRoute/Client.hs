@@ -1,19 +1,14 @@
 module Web.DeepRoute.Client where
 
 import Control.Exception
-import Control.Monad.Reader as Reader
 import Data.Aeson
 import Data.ByteString(ByteString)
 import qualified Data.ByteString as BS
 import qualified Data.ByteString.Lazy as LBS
 import qualified Data.ByteString.Lazy.Internal as LBS
-import Data.DList(DList)
-import qualified Data.DList as DList
-import qualified Data.HashSet as HS
 import Data.Text(Text)
 import qualified Data.Text.Encoding as T
-import Data.Functor.Compose
-import System.IO.Unsafe
+import System.IO.Unsafe(unsafeInterleaveIO)
 
 import GHC.Generics
 

@@ -22,9 +22,6 @@
 {-# LANGUAGE StandaloneDeriving #-}
 {-# LANGUAGE TypeApplications #-}
 
-{-# OPTIONS_GHC -fno-warn-orphans #-}
-{-# OPTIONS_GHC -fno-warn-deprecations #-}
-
 -- |
 -- Module: Web.DeepRoute
 -- Copyright: Copyright © 2022 Kadena LLC.
@@ -38,21 +35,13 @@
 module Web.DeepRoute where
 
 import Control.Exception
--- import Control.Lens
--- import Control.Monad.Catch hiding (bracket)
-import Control.Monad.Reader as Reader
 import Data.Aeson
 import Data.ByteString(ByteString)
 import qualified Data.ByteString as BS
 import qualified Data.ByteString.Lazy as LBS
 import qualified Data.ByteString.Lazy.Internal as LBS
-import Data.DList(DList)
-import qualified Data.DList as DList
-import qualified Data.HashSet as HS
 import Data.Text(Text)
 import qualified Data.Text.Encoding as T
-import Data.Functor.Compose
-import System.IO.Unsafe
 
 import GHC.Generics
 
@@ -64,7 +53,7 @@ import Web.HttpApiData
 
 data HTTPEarlyExitException
     = HTTPEarlyExitException !Status !(Maybe ByteString)
-    deriving stock (Generic, Show)
+    deriving stock (Show)
     deriving anyclass (Exception)
 
 errorWithStatus :: Status -> Maybe ByteString -> a
