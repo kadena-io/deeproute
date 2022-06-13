@@ -55,9 +55,9 @@ routeWaiApp tree req resp = do
     let
         apps = (\(mt, app) -> (mt, (mt, app))) <$>
             runRoute tree lose id (Wai.requestMethod req) (Wai.pathInfo req)
-        acceptHeader = parseAccept =<< lookup "Accept" (Wai.requestHeaders req)
+        acceptHeader = lookup "Accept" (Wai.requestHeaders req)
     handle earlyExit $ case acceptHeader of
-        Just accept -> case mapAccept apps $ renderHeader (normalizeContentType accept) of
+        Just accept -> case parseAccept =<< mapAccept apps accept of
             Just (ct, app) -> app req (setContentType ct resp)
             Nothing -> errorWithStatus notAcceptable406 Nothing
         Nothing -> case apps of
@@ -80,7 +80,9 @@ routeWaiApp tree req resp = do
             (LBS.fromStrict $ fromMaybe (statusMessage status) body)
     setContentType mt resp =
         -- this only works if we don't use the "raw" Wai response type.
-        resp . Wai.mapResponseHeaders (\hs -> unionBy ((==) `on` fst) [("Content-Type", renderHeader mt)] hs)
+        resp . Wai.mapResponseHeaders (\hs -> cth : [h | h@(n,_) <- hs, n /= "Content-Type"])
+        where
+        cth = ("Content-Type", renderHeader mt)
 {-# inline routeWaiApp #-}
 
 jsonApp :: (FromJSON a, ToJSON b) => (a -> IO b) -> Wai.Application
