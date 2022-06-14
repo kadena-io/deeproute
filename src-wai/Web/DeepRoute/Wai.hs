@@ -45,7 +45,7 @@ requestFromJSON req =
         Just !decodedBody ->
             return decodedBody
         Nothing ->
-            throwIO $ HTTPEarlyExitException badRequest400 (Just "invalid request body")
+            errorWithStatus badRequest400 "invalid request body"
 
 routeWaiApp :: Route Wai.Application -> Wai.Application
 routeWaiApp tree req resp =
@@ -55,20 +55,24 @@ routeWaiApp tree req resp =
     (ct, app) =
         runRoute tree lose (,) (Wai.requestMethod req) acceptHeader (Wai.pathInfo req)
     lose InvalidUrlPathPiece =
-        errorWithStatus badRequest400 (Just "invalid url path piece")
+        errorWithStatus badRequest400 "invalid url path piece"
     lose RouteNotFound =
-        errorWithStatus notFound404 Nothing
+        errorWithStatus notFound404 ""
     lose NothingToCapture =
-        errorWithStatus notFound404 (Just "required url path piece was absent")
+        errorWithStatus notFound404 "required url path piece was absent"
     lose WrongMethod =
-        errorWithStatus methodNotAllowed405 Nothing
+        errorWithStatus methodNotAllowed405 ""
     lose NotAcceptable =
-        errorWithStatus notAcceptable406 Nothing
-    earlyExit (HTTPEarlyExitException status body) =
+        errorWithStatus notAcceptable406 ""
+    earlyExit (HTTPEarlyExitException status mt body) =
         resp $ Wai.responseLBS
             status
-            [("Content-Type", "text/plain;charset=utf-8")]
-            (LBS.fromStrict $ fromMaybe (statusMessage status) body)
+            [("Content-Type", renderHeader mt)]
+            (LBS.fromStrict $
+                if mt == "text/plain;charset=utf-8" && BS.null body
+                then statusMessage status
+                else body
+            )
     setContentType mt =
         -- this only works if we don't use the "raw" Wai response type.
         Wai.mapResponseHeaders (\hs -> cth : [h | h@(n,_) <- hs, n /= "Content-Type"])

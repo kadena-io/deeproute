@@ -56,13 +56,17 @@ import Web.HttpApiData
 -- ** HTTP utilities
 
 data HTTPEarlyExitException
-    = HTTPEarlyExitException !Status !(Maybe ByteString)
+    = HTTPEarlyExitException !Status !MediaType !ByteString
     deriving stock (Show)
     deriving anyclass (Exception)
 
-errorWithStatus :: Status -> Maybe ByteString -> a
+jsonErrorWithStatus :: ToJSON e => Status -> e -> a
+jsonErrorWithStatus s e =
+    throw $ HTTPEarlyExitException s "application/json" (LBS.toStrict $ encode e)
+
+errorWithStatus :: Status -> ByteString -> a
 errorWithStatus s b =
-    throw $ HTTPEarlyExitException s b
+    throw $ HTTPEarlyExitException s "text/plain" b
 
 data RoutingError
     = RouteNotFound
@@ -145,7 +149,7 @@ queryParamOptional :: FromHttpApiData a => Text -> QueryText -> Maybe (QueryPara
 queryParamOptional paramName q =
     case (traverse.traverse) parseQueryParam $ lookup paramName q of
         Left _ -> errorWithStatus badRequest400 $
-            Just $ "query parameter " <> T.encodeUtf8 paramName <> " has malformed value"
+            "query parameter " <> T.encodeUtf8 paramName <> " has malformed value"
         Right Nothing -> Nothing
         Right (Just Nothing) -> Just QueryParamNoValue
         Right (Just (Just v)) -> Just $ QueryParamValue v
@@ -163,9 +167,9 @@ queryParam paramName =
     mandatory <$> queryParamOptional paramName
     where
     mandatory Nothing = errorWithStatus badRequest400 $
-        Just $ "mandatory query parameter " <> T.encodeUtf8 paramName <> " not included in URL"
+        "mandatory query parameter " <> T.encodeUtf8 paramName <> " not included in URL"
     mandatory (Just QueryParamNoValue) = errorWithStatus badRequest400 $
-        Just $ "mandatory query parameter " <> T.encodeUtf8 paramName <> " included in URL but has no value"
+        "mandatory query parameter " <> T.encodeUtf8 paramName <> " included in URL but has no value"
     mandatory (Just (QueryParamValue a)) = a
 
 newtype MT = MT MediaType
