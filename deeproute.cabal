@@ -24,6 +24,7 @@ library
         , bytestring
         , containers
         , http-api-data
+        , http-media
         , http-types
         , text
     hs-source-dirs:   src

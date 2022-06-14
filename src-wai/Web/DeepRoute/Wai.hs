@@ -26,8 +26,6 @@ import Data.Functor.Identity
 import qualified Data.HashSet as HS
 import Data.List
 import Data.Maybe
-import Data.Map(Map)
-import qualified Data.Map as Map
 import Data.Text(Text)
 import qualified Data.Text.Encoding as T
 
@@ -49,51 +47,13 @@ requestFromJSON req =
         Nothing ->
             throwIO $ HTTPEarlyExitException badRequest400 (Just "invalid request body")
 
-newtype MT = MT MediaType
-    deriving newtype Show
-
-instance Accept MT where
-    parseAccept = fmap MT . parseAccept
-    matches (MT a) (MT b)
-        | mainType b == "*" = params
-        | subType b == "*"  = mainType a == mainType b && params
-        | otherwise         = (main && sub && params)
-      where
-        normalizedParameters mt
-            | mainType mt == "application"
-            , subType mt == "json"
-                = Map.alter (removeCharsetUtf8 mt) "charset" (parameters mt)
-            | otherwise = parameters mt
-        removeCharsetUtf8 mt (Just "utf-8") = Nothing
-        removeCharsetUtf8 mt p = p
-        main = mainType a == mainType b
-        sub = subType a == subType b
-        params = Map.null (normalizedParameters b) || normalizedParameters a == normalizedParameters b
-
-    moreSpecificThan (MT a) (MT b) = (a `matches` b &&) $
-        mainType a == "*" && anyB && params ||
-        subType a == "*" && (anyB || subB && params) ||
-        anyB || subB || params
-      where
-        anyB = mainType b == "*"
-        subB = subType b == "*"
-        params = not (Map.null $ parameters a) && Map.null (parameters b)
-
-routeWaiApp :: Route [(MediaType, Wai.Application)] -> Wai.Application
-routeWaiApp tree req resp = do
-    let
-        apps = (\(mt, app) -> (mt, (mt, app))) <$>
-            runRoute tree lose id (Wai.requestMethod req) (Wai.pathInfo req)
-        acceptHeader = lookup "Accept" (Wai.requestHeaders req)
-    handle earlyExit $ case acceptHeader of
-        Just accept -> case mapAccept apps =<< parseAccept accept of
-            Just (ct, app) -> app req (setContentType ct resp)
-            Nothing -> errorWithStatus notAcceptable406 Nothing
-        Nothing -> case apps of
-            -- with no accept header, we always return the first content type
-            (_,(ct,app)):_ -> app req (setContentType ct resp)
-            [] -> error "there is no way to respond"
+routeWaiApp :: Route Wai.Application -> Wai.Application
+routeWaiApp tree req resp =
+    handle earlyExit $ app req (resp . setContentType ct)
     where
+    acceptHeader = AcceptHeader <$> lookup "Accept" (Wai.requestHeaders req)
+    (ct, app) =
+        runRoute tree lose (,) (Wai.requestMethod req) acceptHeader (Wai.pathInfo req)
     lose InvalidUrlPathPiece =
         errorWithStatus badRequest400 (Just "invalid url path piece")
     lose RouteNotFound =
@@ -102,14 +62,16 @@ routeWaiApp tree req resp = do
         errorWithStatus notFound404 (Just "required url path piece was absent")
     lose WrongMethod =
         errorWithStatus methodNotAllowed405 Nothing
+    lose NotAcceptable =
+        errorWithStatus notAcceptable406 Nothing
     earlyExit (HTTPEarlyExitException status body) =
         resp $ Wai.responseLBS
             status
             [("Content-Type", "text/plain;charset=utf-8")]
             (LBS.fromStrict $ fromMaybe (statusMessage status) body)
-    setContentType mt resp =
+    setContentType mt =
         -- this only works if we don't use the "raw" Wai response type.
-        resp . Wai.mapResponseHeaders (\hs -> cth : [h | h@(n,_) <- hs, n /= "Content-Type"])
+        Wai.mapResponseHeaders (\hs -> cth : [h | h@(n,_) <- hs, n /= "Content-Type"])
         where
         cth = ("Content-Type", renderHeader mt)
 {-# inline routeWaiApp #-}
