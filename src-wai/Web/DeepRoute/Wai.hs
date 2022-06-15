@@ -47,24 +47,33 @@ requestFromJSON req =
         Nothing ->
             errorWithStatus badRequest400 "invalid request body"
 
-routeWaiApp :: Route Wai.Application -> Wai.Application
-routeWaiApp tree req resp =
-    handle earlyExit $ app req (resp . setContentType ct)
+routeWaiApp
+    :: Route Wai.Application
+    -> Wai.Request
+    -> Maybe ((Wai.Response -> IO Wai.ResponseReceived) -> IO Wai.ResponseReceived)
+routeWaiApp tree req = do
+    (ct, app) <-
+        runRoute tree lose ((Just .) . (,)) (Wai.requestMethod req) acceptHeader (Wai.pathInfo req)
+    return $ \resp ->
+        handle (earlyExit resp) $ app req (resp . setContentType ct)
     where
     acceptHeader = AcceptHeader <$> lookup "Accept" (Wai.requestHeaders req)
-    (ct, app) =
-        runRoute tree lose (,) (Wai.requestMethod req) acceptHeader (Wai.pathInfo req)
     lose InvalidUrlPathPiece =
         errorWithStatus badRequest400 "invalid url path piece"
     lose RouteNotFound =
-        errorWithStatus notFound404 ""
+        Nothing
     lose NothingToCapture =
-        errorWithStatus notFound404 "required url path piece was absent"
+        Nothing
     lose WrongMethod =
         errorWithStatus methodNotAllowed405 ""
     lose NotAcceptable =
         errorWithStatus notAcceptable406 ""
-    earlyExit (HTTPEarlyExitException status mt body) =
+    setContentType mt =
+        -- this only works if we don't use the "raw" Wai response type.
+        Wai.mapResponseHeaders (\hs -> cth : [h | h@(n,_) <- hs, n /= "Content-Type"])
+        where
+        cth = ("Content-Type", renderHeader mt)
+    earlyExit resp (HTTPEarlyExitException status mt body) =
         resp $ Wai.responseLBS
             status
             [("Content-Type", renderHeader mt)]
@@ -73,11 +82,6 @@ routeWaiApp tree req resp =
                 then statusMessage status
                 else body
             )
-    setContentType mt =
-        -- this only works if we don't use the "raw" Wai response type.
-        Wai.mapResponseHeaders (\hs -> cth : [h | h@(n,_) <- hs, n /= "Content-Type"])
-        where
-        cth = ("Content-Type", renderHeader mt)
 {-# inline routeWaiApp #-}
 
 jsonApp :: (FromJSON a, ToJSON b) => (a -> IO b) -> Wai.Application
