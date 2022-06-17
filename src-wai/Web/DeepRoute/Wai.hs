@@ -60,8 +60,8 @@ routeWaiApp req resp fallback tree =
         runRoute tree lose win (Wai.requestMethod req) acceptHeader (Wai.pathInfo req)
     where
     acceptHeader = AcceptHeader <$> lookup "Accept" (Wai.requestHeaders req)
-    lose InvalidUrlPathPiece =
-        errorWithStatus badRequest400 "invalid url path piece"
+    lose (InvalidUrlPathPiece t) =
+        errorWithStatus badRequest400 $ "invalid url path piece: " <> T.encodeUtf8 t
     lose RouteNotFound =
         fallback
     lose WrongMethod =

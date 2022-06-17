@@ -72,7 +72,7 @@ errorWithStatus s b =
 data RoutingError
     = RouteNotFound
     | WrongMethod
-    | InvalidUrlPathPiece
+    | InvalidUrlPathPiece Text
     | NotAcceptable
 
 newtype AcceptHeader = AcceptHeader ByteString
@@ -116,7 +116,7 @@ capture' parse inner = Route $ \lose win meth accept path ->
     case path of
         ele : rest -> case parse ele of
             Just !cap -> runRoute (($ cap) <$> inner) lose win meth accept rest
-            Nothing -> lose InvalidUrlPathPiece
+            Nothing -> lose (InvalidUrlPathPiece ele)
         _ -> lose RouteNotFound
 {-# inline capture' #-}
 
