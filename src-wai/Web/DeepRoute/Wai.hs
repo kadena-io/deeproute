@@ -52,25 +52,23 @@ requestFromJSON req =
 routeWaiApp
     :: Wai.Request
     -> (Wai.Response -> IO Wai.ResponseReceived)
+    -> IO Wai.ResponseReceived
     -> Route Wai.Application
-    -> IO (Maybe (IO Wai.ResponseReceived))
-routeWaiApp req resp tree =
-    runRoute tree lose (\ct app -> return $ Just (ct, app)) (Wai.requestMethod req) acceptHeader (Wai.pathInfo req) >>= \case
-        Nothing ->
-            return Nothing
-        Just (ct, app) ->
-            return $ Just $
-                handle (earlyExit resp) $ lazy $ app req (resp . setContentType ct)
+    -> IO Wai.ResponseReceived
+routeWaiApp req resp fallback tree =
+    runRoute tree lose win (Wai.requestMethod req) acceptHeader (Wai.pathInfo req)
     where
     acceptHeader = AcceptHeader <$> lookup "Accept" (Wai.requestHeaders req)
     lose InvalidUrlPathPiece =
         errorWithStatus badRequest400 "invalid url path piece"
     lose RouteNotFound =
-        return Nothing
+        fallback
     lose WrongMethod =
         errorWithStatus methodNotAllowed405 ""
     lose NotAcceptable =
         errorWithStatus notAcceptable406 ""
+    win ct app =
+        handle (earlyExit resp) $ lazy $ app req (resp . setContentType ct)
     setContentType mt =
         -- this only works if we don't use the "raw" Wai response type.
         Wai.mapResponseHeaders (\hs -> cth : [h | h@(n,_) <- hs, n /= "Content-Type"])
