@@ -50,11 +50,11 @@ requestFromJSON req =
             errorWithStatus badRequest400 "invalid request body"
 
 routeWaiApp
-    :: Route Wai.Application
-    -> Wai.Request
+    :: Wai.Request
     -> (Wai.Response -> IO Wai.ResponseReceived)
+    -> Route Wai.Application
     -> IO (Maybe (IO Wai.ResponseReceived))
-routeWaiApp tree req resp =
+routeWaiApp req resp tree =
     runRoute tree lose (\ct app -> return $ Just (ct, app)) (Wai.requestMethod req) acceptHeader (Wai.pathInfo req) >>= \case
         Nothing ->
             return Nothing
