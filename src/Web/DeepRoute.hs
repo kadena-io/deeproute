@@ -206,3 +206,5 @@ instance Accept MT where
         anyB = mainType b == "*"
         subB = subType b == "*"
         params = not (Map.null $ parameters a) && Map.null (parameters b)
+
+    hasExtensionParameters _ = True
