@@ -35,6 +35,7 @@
 module Web.DeepRoute where
 
 import Control.Exception
+import Control.Monad.Reader
 import Data.Aeson
 import Data.ByteString(ByteString)
 import qualified Data.ByteString as BS
@@ -70,7 +71,6 @@ errorWithStatus s b =
 
 data RoutingError
     = RouteNotFound
-    | NothingToCapture
     | WrongMethod
     | InvalidUrlPathPiece
     | NotAcceptable
@@ -117,7 +117,7 @@ capture' parse inner = Route $ \lose win meth accept path ->
         ele : rest -> case parse ele of
             Just !cap -> runRoute (($ cap) <$> inner) lose win meth accept rest
             Nothing -> lose InvalidUrlPathPiece
-        _ -> lose NothingToCapture
+        _ -> lose RouteNotFound
 {-# inline capture' #-}
 
 noMoreChoices :: Route a
@@ -145,32 +145,35 @@ data QueryParam a
     = QueryParamNoValue
     | QueryParamValue !a
 
-queryParamOptional :: FromHttpApiData a => Text -> QueryText -> Maybe (QueryParam a)
-queryParamOptional paramName q =
+newtype QueryParser a = QueryParser (ReaderT QueryText IO a)
+    deriving newtype (Functor, Applicative, Monad)
+
+queryParamOptional :: FromHttpApiData a => Text -> QueryParser (Maybe (QueryParam a))
+queryParamOptional paramName = QueryParser $ ReaderT $ \q ->
     case (traverse.traverse) parseQueryParam $ lookup paramName q of
         Left _ -> errorWithStatus badRequest400 $
             "query parameter " <> T.encodeUtf8 paramName <> " has malformed value"
-        Right Nothing -> Nothing
-        Right (Just Nothing) -> Just QueryParamNoValue
-        Right (Just (Just v)) -> Just $ QueryParamValue v
+        Right Nothing -> return Nothing
+        Right (Just Nothing) -> return $ Just QueryParamNoValue
+        Right (Just (Just v)) -> return $ Just $! QueryParamValue v
 
-queryParamMaybe :: FromHttpApiData a => Text -> QueryText -> Maybe a
+queryParamMaybe :: FromHttpApiData a => Text -> QueryParser (Maybe a)
 queryParamMaybe paramName =
     collapseNoValue <$> queryParamOptional paramName
     where
     collapseNoValue (Just QueryParamNoValue) = Nothing
-    collapseNoValue (Just (QueryParamValue v)) = Just v
+    collapseNoValue (Just (QueryParamValue v)) = Just $! v
     collapseNoValue Nothing = Nothing
 
-queryParam :: FromHttpApiData a => Text -> QueryText -> a
+queryParam :: FromHttpApiData a => Text -> QueryParser a
 queryParam paramName =
-    mandatory <$> queryParamOptional paramName
+    mandatory =<< queryParamOptional paramName
     where
     mandatory Nothing = errorWithStatus badRequest400 $
         "mandatory query parameter " <> T.encodeUtf8 paramName <> " not included in URL"
     mandatory (Just QueryParamNoValue) = errorWithStatus badRequest400 $
         "mandatory query parameter " <> T.encodeUtf8 paramName <> " included in URL but has no value"
-    mandatory (Just (QueryParamValue a)) = a
+    mandatory (Just (QueryParamValue a)) = return a
 
 newtype MT = MT MediaType
     deriving newtype Show

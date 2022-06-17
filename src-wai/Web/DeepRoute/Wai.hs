@@ -13,6 +13,7 @@ module Web.DeepRoute.Wai
     ) where
 
 import Control.Exception
+import Control.Monad.Reader
 import Data.Aeson
 import Data.ByteString(ByteString)
 import qualified Data.ByteString as BS
@@ -28,6 +29,7 @@ import Data.List
 import Data.Maybe
 import Data.Text(Text)
 import qualified Data.Text.Encoding as T
+import GHC.Magic
 
 import Network.HTTP.Types
 import Network.HTTP.Media
@@ -55,14 +57,12 @@ routeWaiApp tree req = do
     (ct, app) <-
         runRoute tree lose ((Just .) . (,)) (Wai.requestMethod req) acceptHeader (Wai.pathInfo req)
     return $ \resp ->
-        handle (earlyExit resp) $ app req (resp . setContentType ct)
+        handle (earlyExit resp) $ lazy $ app req (resp . setContentType ct)
     where
     acceptHeader = AcceptHeader <$> lookup "Accept" (Wai.requestHeaders req)
     lose InvalidUrlPathPiece =
         errorWithStatus badRequest400 "invalid url path piece"
     lose RouteNotFound =
-        Nothing
-    lose NothingToCapture =
         Nothing
     lose WrongMethod =
         errorWithStatus methodNotAllowed405 ""
@@ -90,7 +90,7 @@ jsonApp k req resp =
         =<< k
         =<< requestFromJSON req
 
-getParams :: Wai.Request -> (QueryText -> a) -> a
-getParams req parser = parser query
+getParams :: Wai.Request -> QueryParser a -> IO a
+getParams req (QueryParser parser) = runReaderT parser query
     where
     query = queryToQueryText $ Wai.queryString req

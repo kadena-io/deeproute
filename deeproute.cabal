@@ -26,6 +26,7 @@ library
         , http-api-data
         , http-media
         , http-types
+        , mtl
         , text
     hs-source-dirs:   src
     default-language: Haskell2010
@@ -42,9 +43,11 @@ library deeproute-wai
         , case-insensitive
         , containers
         , deeproute
+        , ghc-prim
         , http-api-data
         , http-media
         , http-types
+        , mtl
         , text
         , unordered-containers
         , wai
