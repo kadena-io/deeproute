@@ -61,13 +61,13 @@ data HTTPEarlyExitException
     deriving stock (Show)
     deriving anyclass (Exception)
 
-jsonErrorWithStatus :: ToJSON e => Status -> e -> a
+jsonErrorWithStatus :: ToJSON e => Status -> e -> IO a
 jsonErrorWithStatus s e =
-    throw $ HTTPEarlyExitException s "application/json" (LBS.toStrict $ encode e)
+    throwIO $ HTTPEarlyExitException s "application/json" (LBS.toStrict $ encode e)
 
-errorWithStatus :: Status -> ByteString -> a
+errorWithStatus :: Status -> ByteString -> IO a
 errorWithStatus s b =
-    throw $ HTTPEarlyExitException s "text/plain" b
+    throwIO $ HTTPEarlyExitException s "text/plain" b
 
 data RoutingError
     = RouteNotFound
@@ -146,12 +146,12 @@ data QueryParam a
     | QueryParamValue !a
 
 newtype QueryParser a = QueryParser (ReaderT QueryText IO a)
-    deriving newtype (Functor, Applicative, Monad)
+    deriving newtype (Functor, Applicative, Monad, MonadIO)
 
 queryParamOptional :: FromHttpApiData a => Text -> QueryParser (Maybe (QueryParam a))
 queryParamOptional paramName = QueryParser $ ReaderT $ \q ->
     case (traverse.traverse) parseQueryParam $ lookup paramName q of
-        Left _ -> errorWithStatus badRequest400 $
+        Left _ -> liftIO $ errorWithStatus badRequest400 $
             "query parameter " <> T.encodeUtf8 paramName <> " has malformed value"
         Right Nothing -> return Nothing
         Right (Just Nothing) -> return $ Just QueryParamNoValue
@@ -169,9 +169,9 @@ queryParam :: FromHttpApiData a => Text -> QueryParser a
 queryParam paramName =
     mandatory =<< queryParamOptional paramName
     where
-    mandatory Nothing = errorWithStatus badRequest400 $
+    mandatory Nothing = liftIO $ errorWithStatus badRequest400 $
         "mandatory query parameter " <> T.encodeUtf8 paramName <> " not included in URL"
-    mandatory (Just QueryParamNoValue) = errorWithStatus badRequest400 $
+    mandatory (Just QueryParamNoValue) = liftIO $ errorWithStatus badRequest400 $
         "mandatory query parameter " <> T.encodeUtf8 paramName <> " included in URL but has no value"
     mandatory (Just (QueryParamValue a)) = return a
 

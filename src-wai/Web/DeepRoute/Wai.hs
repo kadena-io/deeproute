@@ -52,18 +52,21 @@ requestFromJSON req =
 routeWaiApp
     :: Route Wai.Application
     -> Wai.Request
-    -> Maybe ((Wai.Response -> IO Wai.ResponseReceived) -> IO Wai.ResponseReceived)
-routeWaiApp tree req = do
-    (ct, app) <-
-        runRoute tree lose ((Just .) . (,)) (Wai.requestMethod req) acceptHeader (Wai.pathInfo req)
-    return $ \resp ->
-        handle (earlyExit resp) $ lazy $ app req (resp . setContentType ct)
+    -> (Wai.Response -> IO Wai.ResponseReceived)
+    -> IO (Maybe (IO Wai.ResponseReceived))
+routeWaiApp tree req resp =
+    runRoute tree lose (\ct app -> return $ Just (ct, app)) (Wai.requestMethod req) acceptHeader (Wai.pathInfo req) >>= \case
+        Nothing ->
+            return Nothing
+        Just (ct, app) ->
+            return $ Just $
+                handle (earlyExit resp) $ lazy $ app req (resp . setContentType ct)
     where
     acceptHeader = AcceptHeader <$> lookup "Accept" (Wai.requestHeaders req)
     lose InvalidUrlPathPiece =
         errorWithStatus badRequest400 "invalid url path piece"
     lose RouteNotFound =
-        Nothing
+        return Nothing
     lose WrongMethod =
         errorWithStatus methodNotAllowed405 ""
     lose NotAcceptable =
