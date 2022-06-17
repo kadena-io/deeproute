@@ -56,7 +56,8 @@ routeWaiApp
     -> Route Wai.Application
     -> IO Wai.ResponseReceived
 routeWaiApp req resp fallback tree =
-    runRoute tree lose win (Wai.requestMethod req) acceptHeader (Wai.pathInfo req)
+    handle (earlyExit resp) $
+        runRoute tree lose win (Wai.requestMethod req) acceptHeader (Wai.pathInfo req)
     where
     acceptHeader = AcceptHeader <$> lookup "Accept" (Wai.requestHeaders req)
     lose InvalidUrlPathPiece =
@@ -68,7 +69,7 @@ routeWaiApp req resp fallback tree =
     lose NotAcceptable =
         errorWithStatus notAcceptable406 ""
     win ct app =
-        handle (earlyExit resp) $ lazy $ app req (resp . setContentType ct)
+        app req (resp . setContentType ct)
     setContentType mt =
         -- this only works if we don't use the "raw" Wai response type.
         Wai.mapResponseHeaders (\hs -> cth : [h | h@(n,_) <- hs, n /= "Content-Type"])
