@@ -135,12 +135,10 @@ terminus' xs = Route $ \lose win meth maybeAccept (HeadAlteration hd) (OptionsRe
     let
         withMethod m = [ (MT rmt, (rm, rmt, ra)) | (rm, rmt, ra) <- xs, rm == m ]
         route m notAcceptable wrongMethod w
-            | Nothing <- maybeAccept = case rightMethod of
-                ((_,(_,mt,a)):_) -> w mt a
-                [] -> wrongMethod
+            | [] <- rightMethod = wrongMethod
+            | Nothing <- maybeAccept, ((_,(_,mt,a)):_) <- rightMethod = w mt a
             | Nothing <- acceptable = notAcceptable
             | Just (_,mt,a) <- acceptable = w mt a
-            | [] <- rightMethod = wrongMethod
             where
             rightMethod = withMethod m
             acceptable = mapAccept rightMethod =<< coerce maybeAccept
@@ -166,7 +164,7 @@ queryParamOptional paramName = QueryParser $ ReaderT $ \q ->
             "query parameter " <> T.encodeUtf8 paramName <> " has malformed value"
         Right Nothing -> return Nothing
         Right (Just Nothing) -> return $ Just QueryParamNoValue
-        Right (Just (Just v)) -> return $ Just $! QueryParamValue v
+        Right (Just (Just !v)) -> return $ Just $ QueryParamValue v
 
 queryParamMaybe :: FromHttpApiData a => Text -> QueryParser (Maybe a)
 queryParamMaybe paramName =

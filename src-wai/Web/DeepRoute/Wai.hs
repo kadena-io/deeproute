@@ -61,8 +61,8 @@ routeWaiApp req resp fallback tree =
         runRoute tree lose win (Wai.requestMethod req) acceptHeader (HeadAlteration hd) (OptionsResponse opts) (Wai.pathInfo req)
     where
     hd ct app = app req (emptyResponseBody resp)
-    emptyResponseBody respond (Wai.responseToStream -> (st,hs,_)) =
-        respond (Wai.responseLBS st hs "")
+    emptyResponseBody respond response =
+        respond $ Wai.responseLBS (Wai.responseStatus response) (Wai.responseHeaders response) ""
     opts allowedMethods =
         resp $ Wai.responseLBS noContent204 [("Allow", BS.intercalate ", " allowedMethods)] ""
     acceptHeader = AcceptHeader <$> lookup "Accept" (Wai.requestHeaders req)
