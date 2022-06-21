@@ -77,34 +77,37 @@ data RoutingError
 
 newtype AcceptHeader = AcceptHeader ByteString
 
+newtype HeadAlteration a r = HeadAlteration (MediaType -> a -> r)
+newtype OptionsResponse r = OptionsResponse ([Method] -> r)
+
 newtype Route a = Route
     { runRoute
         :: forall r. (RoutingError -> r) -> (MediaType -> a -> r)
-        -> Method -> Maybe AcceptHeader -> [Text]
+        -> Method -> Maybe AcceptHeader -> HeadAlteration a r -> OptionsResponse r -> [Text]
         -> r
     }
 
 instance Functor Route where
-    fmap f rt = Route $ \lose win meth accept path ->
-        runRoute rt lose (\rmt a -> win rmt (f a)) meth accept path
+    fmap f rt = Route $ \lose win meth accept (HeadAlteration hd) opts path ->
+        runRoute rt lose (\rmt a -> win rmt (f a)) meth accept (HeadAlteration $ \rmt a -> hd rmt (f a)) opts path
     {-# inline fmap #-}
 
 instance Monoid (Route a) where
     mempty = noMoreChoices
 
 instance Semigroup (Route a) where
-    f <> s = Route $ \lose win meth accept path ->
+    f <> s = Route $ \lose win meth accept hd opts path ->
         let
-            fallback RouteNotFound = runRoute s lose win meth accept path
+            fallback RouteNotFound = runRoute s lose win meth accept hd opts path
             fallback err = lose err
-        in runRoute f fallback win meth accept path
+        in runRoute f fallback win meth accept hd opts path
     {-# INLINE (<>) #-}
 
 choice :: Text -> Route a -> Route a
-choice thisEle thisRoute = Route $ \lose win meth accept path ->
+choice thisEle thisRoute = Route $ \lose win meth accept hd opts path ->
     case path of
         ele : rest | ele == thisEle ->
-            runRoute thisRoute lose win meth accept rest
+            runRoute thisRoute lose win meth accept hd opts rest
         _ -> lose RouteNotFound
 {-# inline choice #-}
 
@@ -112,33 +115,39 @@ capture :: forall e a. FromHttpApiData e => Route (e -> a) -> Route a
 capture inner = capture' parseUrlPieceMaybe inner
 
 capture' :: (Text -> Maybe e) -> Route (e -> a) -> Route a
-capture' parse inner = Route $ \lose win meth accept path ->
+capture' parse inner = Route $ \lose win meth accept hd opts path ->
     case path of
         ele : rest -> case parse ele of
-            Just !cap -> runRoute (($ cap) <$> inner) lose win meth accept rest
+            Just !cap -> runRoute (($ cap) <$> inner) lose win meth accept hd opts rest
             Nothing -> lose (InvalidUrlPathPiece ele)
         _ -> lose RouteNotFound
 {-# inline capture' #-}
 
 noMoreChoices :: Route a
-noMoreChoices = Route $ \lose _ _ _ _ -> lose RouteNotFound
+noMoreChoices = Route $ \lose _ _ _ _ _ _ -> lose RouteNotFound
 {-# inline noMoreChoices #-}
 
 terminus :: Method -> MediaType -> a -> Route a
 terminus m mt a = terminus' [(m, mt, a)]
 
 terminus' :: forall a. [(Method, MediaType, a)] -> Route a
-terminus' xs = Route $ \lose win meth maybeAccept path -> let
-    rightMethod = [ (MT rmt, (rm, rmt, ra)) | (rm, rmt, ra) <- xs, rm == meth ]
-    acceptable = mapAccept rightMethod =<< coerce maybeAccept
+terminus' xs = Route $ \lose win meth maybeAccept (HeadAlteration hd) (OptionsResponse opts) path ->
+    let
+        withMethod m = [ (MT rmt, (rm, rmt, ra)) | (rm, rmt, ra) <- xs, rm == m ]
+        route m notAcceptable wrongMethod w
+            | Nothing <- maybeAccept, ((_,(_,mt,a)):_) <- rightMethod = w mt a
+            | Nothing <- acceptable = notAcceptable
+            | Just (_,mt,a) <- acceptable = w mt a
+            | [] <- rightMethod = wrongMethod
+            where
+            rightMethod = withMethod m
+            acceptable = mapAccept rightMethod =<< coerce maybeAccept
     in case path of
         []
-            | [] <- rightMethod -> lose WrongMethod
-            | Nothing <- maybeAccept, ((_,(_,mt,a)):_) <- rightMethod -> win mt a
-            | Nothing <- acceptable -> lose NotAcceptable
-            | Just (_,mt,a) <- acceptable -> win mt a
+            | meth == methodOptions -> opts [ mt | (mt, _, _) <- xs ]
+            | meth == methodHead -> route methodHead (lose NotAcceptable) (route methodGet (lose NotAcceptable) (lose WrongMethod) hd) win
+            | otherwise -> route meth (lose NotAcceptable) (lose WrongMethod) win
         _ -> lose RouteNotFound
-        where
 {-# inline terminus #-}
 
 data QueryParam a

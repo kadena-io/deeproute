@@ -3,6 +3,7 @@
 {-# language OverloadedStrings #-}
 {-# language DerivingStrategies #-}
 {-# language GeneralizedNewtypeDeriving #-}
+{-# language ViewPatterns #-}
 
 module Web.DeepRoute.Wai
     ( responseJSON
@@ -57,8 +58,13 @@ routeWaiApp
     -> IO Wai.ResponseReceived
 routeWaiApp req resp fallback tree =
     handle (earlyExit resp) $
-        runRoute tree lose win (Wai.requestMethod req) acceptHeader (Wai.pathInfo req)
+        runRoute tree lose win (Wai.requestMethod req) acceptHeader (HeadAlteration hd) (OptionsResponse opts) (Wai.pathInfo req)
     where
+    hd ct app = app req (emptyResponseBody resp)
+    emptyResponseBody respond (Wai.responseToStream -> (st,hs,_)) =
+        respond (Wai.responseLBS st hs "")
+    opts allowedMethods =
+        resp $ Wai.responseLBS noContent204 [("Allow", BS.intercalate ", " allowedMethods)] ""
     acceptHeader = AcceptHeader <$> lookup "Accept" (Wai.requestHeaders req)
     lose (InvalidUrlPathPiece t) =
         errorWithStatus badRequest400 $ "invalid url path piece: " <> T.encodeUtf8 t
