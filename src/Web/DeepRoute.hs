@@ -135,7 +135,9 @@ terminus' xs = Route $ \lose win meth maybeAccept (HeadAlteration hd) (OptionsRe
     let
         withMethod m = [ (MT rmt, (rm, rmt, ra)) | (rm, rmt, ra) <- xs, rm == m ]
         route m notAcceptable wrongMethod w
-            | Nothing <- maybeAccept, ((_,(_,mt,a)):_) <- rightMethod = w mt a
+            | Nothing <- maybeAccept = case rightMethod of
+                ((_,(_,mt,a)):_) -> w mt a
+                [] -> wrongMethod
             | Nothing <- acceptable = notAcceptable
             | Just (_,mt,a) <- acceptable = w mt a
             | [] <- rightMethod = wrongMethod
