@@ -44,7 +44,7 @@ makeLenses ''ClientEnv
 data ApiRequest
     = ApiRequest
     { _requestPath :: !BSB.Builder
-    , _requestQuery :: !Query
+    , _requestQuery :: !QueryText
     , _requestHeaders :: !RequestHeaders
     , _requestBody :: !Client.RequestBody
     , _requestMethod :: !Method
@@ -61,7 +61,7 @@ doRequest req env kont = do
                 , Client.host = _host env
                 , Client.port = _port env
                 , Client.path = LBS.toStrict $ BSB.toLazyByteString $ _requestPath req
-                , Client.queryString = renderQuery True $ _requestQuery req
+                , Client.queryString = LBS.toStrict $ BSB.toLazyByteString $ renderQueryText True (_requestQuery req)
                 , Client.requestHeaders = _requestHeaders req
                 , Client.requestBody = _requestBody req
                 }
