@@ -1,9 +1,14 @@
+{-# language OverloadedStrings #-}
+{-# language TemplateHaskell #-}
+
 module Web.DeepRoute.Client where
 
 import Control.Exception
+import Control.Lens
 import Data.Aeson
 import Data.ByteString(ByteString)
 import qualified Data.ByteString as BS
+import qualified Data.ByteString.Builder as BSB
 import qualified Data.ByteString.Lazy as LBS
 import qualified Data.ByteString.Lazy.Internal as LBS
 import Data.Text(Text)
@@ -16,10 +21,10 @@ import qualified Network.HTTP.Client.Internal as Client
 import Network.HTTP.Types
 import Web.HttpApiData
 
-readJsonResponseBody :: FromJSON a => Client.Response Client.BodyReader -> IO (Maybe a)
-readJsonResponseBody resp = do
+readJsonResponseBody :: FromJSON a => (a -> IO r) -> IO r -> Client.Response Client.BodyReader -> IO r
+readJsonResponseBody kont fallback resp = do
     bodyBytes <- brLazy (Client.responseBody resp)
-    return $! maybe Nothing (Just $!) $ decode' bodyBytes
+    maybe fallback kont $ decode' bodyBytes
     where
     brLazy br = unsafeInterleaveIO $ do
         next <- Client.brRead br
@@ -28,36 +33,53 @@ readJsonResponseBody resp = do
 
 data ClientEnv
     = ClientEnv
-    { host :: !ByteString
-    , port :: !Int
-    , secure :: !Bool
-    , manager :: !Client.Manager
+    { _host :: !ByteString
+    , _port :: !Int
+    , _secure :: !Bool
+    , _manager :: !Client.Manager
     }
+
+makeLenses ''ClientEnv
 
 data ApiRequest
     = ApiRequest
-    { requestPath :: !ByteString
-    , requestQuery :: !Query
-    , requestHeaders :: !RequestHeaders
-    , requestBody :: !Client.RequestBody
-    , requestMethod :: !Method
+    { _requestPath :: !ByteString
+    , _requestQuery :: !Query
+    , _requestHeaders :: !RequestHeaders
+    , _requestBody :: !Client.RequestBody
+    , _requestMethod :: !Method
     }
 
-request :: ApiRequest -> ClientEnv -> (Client.Response Client.BodyReader -> IO a) -> IO a
-request req env kont = do
+makeLenses ''ApiRequest
+
+doRequest :: ApiRequest -> ClientEnv -> (Client.Response Client.BodyReader -> IO a) -> IO a
+doRequest req env kont = do
     let req' =
             Client.defaultRequest
-                { Client.method = requestMethod req
-                , Client.secure = secure env
-                , Client.host = host env
-                , Client.port = port env
-                , Client.path = requestPath req
-                , Client.queryString = renderQuery True $ requestQuery req
-                , Client.requestHeaders = requestHeaders req
-                , Client.requestBody = requestBody req
+                { Client.method = _requestMethod req
+                , Client.secure = _secure env
+                , Client.host = _host env
+                , Client.port = _port env
+                , Client.path = _requestPath req
+                , Client.queryString = renderQuery True $ _requestQuery req
+                , Client.requestHeaders = _requestHeaders req
+                , Client.requestBody = _requestBody req
                 }
-    Client.withResponse req' (manager env) kont
+    Client.withResponse req' (_manager env) kont
 
-requestJSON :: FromJSON a => ApiRequest -> ClientEnv -> IO (Maybe a)
-requestJSON req env =
-    request req env readJsonResponseBody
+doJSONRequest :: FromJSON a => ApiRequest -> ClientEnv -> (a -> IO r) -> IO r -> IO r
+doJSONRequest req env kont fallback =
+    doRequest req env (readJsonResponseBody kont fallback)
+
+mkRequest :: Method -> BSB.Builder -> ApiRequest
+mkRequest m p = ApiRequest
+    { _requestPath = LBS.toStrict (BSB.toLazyByteString p)
+    , _requestQuery = []
+    , _requestHeaders = []
+    , _requestBody = Client.RequestBodyBS mempty
+    , _requestMethod = m
+    }
+
+infixl 1 /
+(/) :: ToHttpApiData a => BSB.Builder -> a -> BSB.Builder
+p / s = p <> "/" <> toEncodedUrlPiece s
