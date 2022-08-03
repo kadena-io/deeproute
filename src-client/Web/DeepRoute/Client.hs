@@ -43,7 +43,7 @@ makeLenses ''ClientEnv
 
 data ApiRequest
     = ApiRequest
-    { _requestPath :: !ByteString
+    { _requestPath :: !BSB.Builder
     , _requestQuery :: !Query
     , _requestHeaders :: !RequestHeaders
     , _requestBody :: !Client.RequestBody
@@ -60,7 +60,7 @@ doRequest req env kont = do
                 , Client.secure = _secure env
                 , Client.host = _host env
                 , Client.port = _port env
-                , Client.path = _requestPath req
+                , Client.path = LBS.toStrict $ BSB.toLazyByteString $ _requestPath req
                 , Client.queryString = renderQuery True $ _requestQuery req
                 , Client.requestHeaders = _requestHeaders req
                 , Client.requestBody = _requestBody req
@@ -71,9 +71,9 @@ doJSONRequest :: FromJSON a => ApiRequest -> ClientEnv -> (a -> IO r) -> IO r ->
 doJSONRequest req env kont fallback =
     doRequest req env (readJsonResponseBody kont fallback)
 
-mkRequest :: Method -> BSB.Builder -> ApiRequest
-mkRequest m p = ApiRequest
-    { _requestPath = LBS.toStrict (BSB.toLazyByteString p)
+withMethod :: Method -> ApiRequest
+withMethod m = ApiRequest
+    { _requestPath = "/"
     , _requestQuery = []
     , _requestHeaders = []
     , _requestBody = Client.RequestBodyBS mempty
@@ -81,5 +81,5 @@ mkRequest m p = ApiRequest
     }
 
 infixl 1 /
-(/) :: ToHttpApiData a => BSB.Builder -> a -> BSB.Builder
-p / s = p <> "/" <> toEncodedUrlPiece s
+(/) :: ToHttpApiData a => ApiRequest -> a -> ApiRequest
+r / s = r & requestPath <>~ ("/" <> toEncodedUrlPiece s)
