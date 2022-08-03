@@ -19,7 +19,7 @@ library
         Web.DeepRoute
 
     build-depends:
-          base >= 4.14
+          base >= 4.13
         , aeson
         , bytestring
         , containers
@@ -37,7 +37,7 @@ library deeproute-wai
         Web.DeepRoute.Wai
 
     build-depends:
-          base >= 4.14
+          base >= 4.13
         , aeson
         , bytestring
         , case-insensitive
@@ -60,7 +60,7 @@ library deeproute-client
         Web.DeepRoute.Client
 
     build-depends:
-          base >= 4.14
+          base >= 4.13
         , aeson
         , bytestring
         , containers
