@@ -74,8 +74,8 @@ debugPrintApiRequest (ApiRequest p q h _ m) = unwords
 
 makeLenses ''ApiRequest
 
-doRequest :: ApiRequest -> ClientEnv -> (Client.Response Client.BodyReader -> IO a) -> IO a
-doRequest req env kont = do
+doRequest :: ClientEnv -> ApiRequest -> (Client.Response Client.BodyReader -> IO a) -> IO a
+doRequest env req kont = do
     let req' =
             Client.defaultRequest
                 { Client.method = _requestMethod req
@@ -89,9 +89,9 @@ doRequest req env kont = do
                 }
     Client.withResponse req' (_manager env) kont
 
-doJSONRequest :: FromJSON a => ApiRequest -> ClientEnv -> (a -> IO r) -> IO r -> IO r
-doJSONRequest req env kont fallback =
-    doRequest req env (readJsonResponseBody kont fallback)
+doJSONRequest :: FromJSON a => ClientEnv -> ApiRequest -> (a -> IO r) -> IO r -> IO r
+doJSONRequest env req kont fallback =
+    doRequest env req (readJsonResponseBody kont fallback)
 
 withMethod :: HasRouteRoot e => e -> Method -> ApiRequest
 withMethod e m = ApiRequest
