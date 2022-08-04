@@ -89,6 +89,9 @@ doRequest env req kont = do
                 }
     Client.withResponse req' (_manager env) kont
 
+doRequestForEffect :: ClientEnv -> ApiRequest -> IO ()
+doRequestForEffect env req = doRequest env req (const (return ()))
+
 doJSONRequest :: FromJSON a => ClientEnv -> ApiRequest -> (Maybe a -> IO r) -> IO r
 doJSONRequest env req kont =
     doRequest env req (readJsonResponseBody kont)
