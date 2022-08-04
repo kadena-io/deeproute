@@ -39,7 +39,26 @@ data ClientEnv
     , _manager :: !Client.Manager
     }
 
-makeLenses ''ClientEnv
+makeClassy ''ClientEnv
+
+class HasRouteRoot s where
+    routeRoot :: Lens' s ByteString
+
+data RootedClientEnv = RootedClientEnv
+    { _rootedClientEnvRoot :: !ByteString
+    , _rootedClientEnvEnv :: !ClientEnv
+    }
+
+makeLenses ''RootedClientEnv
+
+instance HasClientEnv RootedClientEnv where
+    clientEnv = rootedClientEnvEnv
+
+instance HasRouteRoot RootedClientEnv where
+    routeRoot = rootedClientEnvRoot
+
+instance HasRouteRoot ByteString where
+    routeRoot = id
 
 data ApiRequest
     = ApiRequest
@@ -49,6 +68,9 @@ data ApiRequest
     , _requestBody :: !Client.RequestBody
     , _requestMethod :: !Method
     }
+
+debugPrintApiRequest (ApiRequest p q h _ m) = unwords
+    ["ApiRequest", show (BSB.toLazyByteString p), show q, show h, show m]
 
 makeLenses ''ApiRequest
 
@@ -71,15 +93,15 @@ doJSONRequest :: FromJSON a => ApiRequest -> ClientEnv -> (a -> IO r) -> IO r ->
 doJSONRequest req env kont fallback =
     doRequest req env (readJsonResponseBody kont fallback)
 
-withMethod :: Method -> ApiRequest
-withMethod m = ApiRequest
-    { _requestPath = "/"
+withMethod :: HasRouteRoot e => e -> Method -> ApiRequest
+withMethod e m = ApiRequest
+    { _requestPath = BSB.byteString (e ^. routeRoot)
     , _requestQuery = []
     , _requestHeaders = []
     , _requestBody = Client.RequestBodyBS mempty
     , _requestMethod = m
     }
 
-infixl 1 /
-(/) :: ToHttpApiData a => ApiRequest -> a -> ApiRequest
-r / s = r & requestPath <>~ ("/" <> toEncodedUrlPiece s)
+infixl 1 //
+(//) :: ToHttpApiData a => ApiRequest -> a -> ApiRequest
+r // s = r & requestPath <>~ ("/" <> toEncodedUrlPiece s)
