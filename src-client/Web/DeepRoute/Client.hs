@@ -21,10 +21,10 @@ import qualified Network.HTTP.Client.Internal as Client
 import Network.HTTP.Types
 import Web.HttpApiData
 
-readJsonResponseBody :: FromJSON a => (a -> IO r) -> IO r -> Client.Response Client.BodyReader -> IO r
-readJsonResponseBody kont fallback resp = do
+readJsonResponseBody :: FromJSON a => (Maybe a -> IO r) -> Client.Response Client.BodyReader -> IO r
+readJsonResponseBody kont resp = do
     bodyBytes <- brLazy (Client.responseBody resp)
-    maybe fallback kont $ decode' bodyBytes
+    kont $ decode' bodyBytes
     where
     brLazy br = unsafeInterleaveIO $ do
         next <- Client.brRead br
@@ -89,9 +89,9 @@ doRequest env req kont = do
                 }
     Client.withResponse req' (_manager env) kont
 
-doJSONRequest :: FromJSON a => ClientEnv -> ApiRequest -> (a -> IO r) -> IO r -> IO r
-doJSONRequest env req kont fallback =
-    doRequest env req (readJsonResponseBody kont fallback)
+doJSONRequest :: FromJSON a => ClientEnv -> ApiRequest -> (Maybe a -> IO r) -> IO r
+doJSONRequest env req kont =
+    doRequest env req (readJsonResponseBody kont)
 
 withMethod :: HasRouteRoot e => e -> Method -> ApiRequest
 withMethod e m = ApiRequest
