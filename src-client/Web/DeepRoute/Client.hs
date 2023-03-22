@@ -11,6 +11,7 @@ import qualified Data.ByteString as BS
 import qualified Data.ByteString.Builder as BSB
 import qualified Data.ByteString.Lazy as LBS
 import qualified Data.ByteString.Lazy.Internal as LBS
+import Data.Maybe
 import Data.Text(Text)
 import qualified Data.Text.Encoding as T
 import System.IO.Unsafe(unsafeInterleaveIO)
@@ -92,8 +93,12 @@ doRequest env req kont = do
 doRequestForEffect :: ClientEnv -> ApiRequest -> IO ()
 doRequestForEffect env req = doRequest env req (const (return ()))
 
-doJSONRequest :: FromJSON a => ClientEnv -> ApiRequest -> (Maybe a -> IO r) -> IO r
+doJSONRequest :: FromJSON a => ClientEnv -> ApiRequest -> (a -> IO r) -> IO r
 doJSONRequest env req kont =
+    doJSONRequest' env req (kont . fromMaybe (error "invalid response body"))
+
+doJSONRequest' :: FromJSON a => ClientEnv -> ApiRequest -> (Maybe a -> IO r) -> IO r
+doJSONRequest' env req kont =
     doRequest env req (readJsonResponseBody kont)
 
 withMethod :: HasRouteRoot e => e -> Method -> ApiRequest
