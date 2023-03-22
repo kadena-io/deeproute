@@ -5,6 +5,7 @@ module Web.DeepRoute.Client where
 
 import Control.Exception
 import Control.Lens
+import Control.Monad
 import Data.Aeson
 import Data.ByteString(ByteString)
 import qualified Data.ByteString as BS
@@ -95,7 +96,7 @@ doRequestForEffect env req = doRequest env req (const (return ()))
 
 doJSONRequest :: FromJSON a => ClientEnv -> ApiRequest -> (a -> IO r) -> IO r
 doJSONRequest env req kont =
-    doJSONRequest' env req (kont . fromMaybe (error "invalid response body"))
+    doJSONRequest' env req (kont . fromMaybe (error "invalid response body") <=< evaluate)
 
 doJSONRequest' :: FromJSON a => ClientEnv -> ApiRequest -> (Maybe a -> IO r) -> IO r
 doJSONRequest' env req kont =
@@ -109,6 +110,10 @@ withMethod e m = ApiRequest
     , _requestBody = Client.RequestBodyBS mempty
     , _requestMethod = m
     }
+
+infixl 1 /@
+(/@) :: ApiRequest -> ByteString -> ApiRequest
+r /@ s = r & requestPath <>~ (BSB.byteString $ "/" <> s)
 
 infixl 1 //
 (//) :: ToHttpApiData a => ApiRequest -> a -> ApiRequest
