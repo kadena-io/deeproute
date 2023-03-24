@@ -94,9 +94,9 @@ doRequest env req kont = do
 doRequestForEffect :: ClientEnv -> ApiRequest -> IO ()
 doRequestForEffect env req = doRequest env req (const (return ()))
 
-doJSONRequest :: FromJSON a => ClientEnv -> ApiRequest -> (a -> IO r) -> IO r
-doJSONRequest env req kont =
-    doJSONRequest' env req (kont . fromMaybe (error "invalid response body") <=< evaluate)
+doJSONRequest :: FromJSON a => ClientEnv -> ApiRequest -> IO a
+doJSONRequest env req =
+    doJSONRequest' env req (evaluate . fromMaybe (error "invalid response body"))
 
 doJSONRequest' :: FromJSON a => ClientEnv -> ApiRequest -> (Maybe a -> IO r) -> IO r
 doJSONRequest' env req kont =
