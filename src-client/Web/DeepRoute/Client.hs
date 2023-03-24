@@ -20,6 +20,7 @@ import System.IO.Unsafe(unsafeInterleaveIO)
 import GHC.Generics
 
 import qualified Network.HTTP.Client.Internal as Client
+import Network.HTTP.Media
 import Network.HTTP.Types
 import Web.HttpApiData
 
@@ -40,6 +41,13 @@ data ClientEnv
     , _secure :: !Bool
     , _manager :: !Client.Manager
     }
+
+data ClientError
+    = UnacceptableResponse !MediaType
+    | UnsuccessfulStatusCode !Status
+    deriving Show
+
+instance Exception ClientError
 
 makeClassy ''ClientEnv
 
@@ -66,18 +74,21 @@ data ApiRequest
     = ApiRequest
     { _requestPath :: !BSB.Builder
     , _requestQuery :: !QueryText
+    , _requestAcceptable :: !(Maybe [MediaType])
+    , _requestSuccessful :: !(Status -> Bool)
     , _requestHeaders :: !RequestHeaders
     , _requestBody :: !Client.RequestBody
     , _requestMethod :: !Method
     }
 
-debugPrintApiRequest (ApiRequest p q h _ m) = unwords
+debugPrintApiRequest (ApiRequest p q _ _ h _ m) = unwords
     ["ApiRequest", show (BSB.toLazyByteString p), show q, show h, show m]
 
 makeLenses ''ApiRequest
 
 doRequest :: ClientEnv -> ApiRequest -> (Client.Response Client.BodyReader -> IO a) -> IO a
 doRequest env req kont = do
+    let acceptHeader = maybe [] (\ts -> [("Accept", renderHeader ts)]) (_requestAcceptable req)
     let req' =
             Client.defaultRequest
                 { Client.method = _requestMethod req
@@ -86,10 +97,20 @@ doRequest env req kont = do
                 , Client.port = _port env
                 , Client.path = LBS.toStrict $ BSB.toLazyByteString $ _requestPath req
                 , Client.queryString = LBS.toStrict $ BSB.toLazyByteString $ renderQueryText True (_requestQuery req)
-                , Client.requestHeaders = _requestHeaders req
+                , Client.requestHeaders = acceptHeader <> _requestHeaders req
                 , Client.requestBody = _requestBody req
+                , Client.checkResponse = \_ resp ->
+                    let status = Client.responseStatus resp
+                    in unless (_requestSuccessful req status) $ throwIO $ UnsuccessfulStatusCode status
                 }
-    Client.withResponse req' (_manager env) kont
+    Client.withResponse req' (_manager env) $ \resp -> do
+        let contentTypeHeader = parseAccept =<< lookup "Content-Type" (Client.responseHeaders resp)
+        case (_requestAcceptable req, contentTypeHeader) of
+            (Just acceptables, Just contentType)
+                | all (not . (contentType `matches`)) acceptables ->
+                    throwIO (UnacceptableResponse contentType)
+            _ ->
+                kont resp
 
 doRequestForEffect :: ClientEnv -> ApiRequest -> IO ()
 doRequestForEffect env req = doRequest env req (const (return ()))
@@ -106,6 +127,8 @@ withMethod :: HasRouteRoot e => e -> Method -> ApiRequest
 withMethod e m = ApiRequest
     { _requestPath = BSB.byteString (e ^. routeRoot)
     , _requestQuery = []
+    , _requestAcceptable = Nothing
+    , _requestSuccessful = statusIsSuccessful
     , _requestHeaders = []
     , _requestBody = Client.RequestBodyBS mempty
     , _requestMethod = m
@@ -113,8 +136,8 @@ withMethod e m = ApiRequest
 
 infixl 1 /@
 (/@) :: ApiRequest -> ByteString -> ApiRequest
-r /@ s = r & requestPath <>~ (BSB.byteString $ "/" <> s)
+r /@ s = r & requestPath <>~ (BSB.char8 '/' <> BSB.byteString s)
 
-infixl 1 //
-(//) :: ToHttpApiData a => ApiRequest -> a -> ApiRequest
-r // s = r & requestPath <>~ ("/" <> toEncodedUrlPiece s)
+infixl 1 /@@
+(/@@) :: ToHttpApiData a => ApiRequest -> a -> ApiRequest
+r /@@ s = r & requestPath <>~ ("/" <> toEncodedUrlPiece s)

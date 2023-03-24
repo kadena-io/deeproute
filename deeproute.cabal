@@ -67,6 +67,7 @@ library deeproute-client
         , deeproute
         , http-api-data
         , http-client
+        , http-media
         , http-types
         , lens
         , text
