@@ -47,7 +47,7 @@ data ClientEnv
 
 data ClientError
     = UnacceptableResponse !MediaType
-    | UnsuccessfulStatusCode !Status
+    | UnsuccessfulStatus !Status
     deriving Show
 
 instance Exception ClientError
@@ -104,7 +104,7 @@ doRequest env req kont = do
                 , Client.requestBody = _requestBody req
                 , Client.checkResponse = \_ resp ->
                     let status = Client.responseStatus resp
-                    in unless (_requestSuccessful req status) $ throwIO $ UnsuccessfulStatusCode status
+                    in unless (_requestSuccessful req status) $ throwIO $ UnsuccessfulStatus status
                 }
     Client.withResponse req' (_manager env) $ \resp -> do
         let contentTypeHeader = parseAccept =<< lookup "Content-Type" (Client.responseHeaders resp)
