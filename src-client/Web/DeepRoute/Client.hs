@@ -24,15 +24,18 @@ import Network.HTTP.Media
 import Network.HTTP.Types
 import Web.HttpApiData
 
-readJsonResponseBody :: FromJSON a => (Maybe a -> IO r) -> Client.Response Client.BodyReader -> IO r
-readJsonResponseBody kont resp = do
+readLazyResponseBody :: (LBS.ByteString -> IO r) -> Client.Response Client.BodyReader -> IO r
+readLazyResponseBody kont resp = do
     bodyBytes <- brLazy (Client.responseBody resp)
-    kont $ decode' bodyBytes
+    kont bodyBytes
     where
     brLazy br = unsafeInterleaveIO $ do
         next <- Client.brRead br
         if BS.null next then return mempty
         else LBS.chunk next <$> brLazy br
+
+readJsonResponseBody :: FromJSON a => (Maybe a -> IO r) -> Client.Response Client.BodyReader -> IO r
+readJsonResponseBody kont = readLazyResponseBody (kont . decode')
 
 data ClientEnv
     = ClientEnv
