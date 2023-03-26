@@ -54,25 +54,6 @@ instance Exception ClientError
 
 makeClassy ''ClientEnv
 
-class HasRouteRoot s where
-    routeRoot :: Lens' s ByteString
-
-data RootedClientEnv = RootedClientEnv
-    { _rootedClientEnvRoot :: !ByteString
-    , _rootedClientEnvEnv :: !ClientEnv
-    }
-
-makeLenses ''RootedClientEnv
-
-instance HasClientEnv RootedClientEnv where
-    clientEnv = rootedClientEnvEnv
-
-instance HasRouteRoot RootedClientEnv where
-    routeRoot = rootedClientEnvRoot
-
-instance HasRouteRoot ByteString where
-    routeRoot = id
-
 data ApiRequest
     = ApiRequest
     { _requestPath :: !BSB.Builder
@@ -126,9 +107,9 @@ doJSONRequest' :: FromJSON a => ClientEnv -> ApiRequest -> (Maybe a -> IO r) -> 
 doJSONRequest' env req kont =
     doRequest env req (readJsonResponseBody kont)
 
-withMethod :: HasRouteRoot e => e -> Method -> ApiRequest
-withMethod e m = ApiRequest
-    { _requestPath = BSB.byteString (e ^. routeRoot)
+withMethod :: ByteString -> Method -> ApiRequest
+withMethod r m = ApiRequest
+    { _requestPath = BSB.byteString r
     , _requestQuery = []
     , _requestAcceptable = Nothing
     , _requestSuccessful = statusIsSuccessful
