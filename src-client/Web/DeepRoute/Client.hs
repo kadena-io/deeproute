@@ -107,9 +107,9 @@ doJSONRequest' :: FromJSON a => ClientEnv -> ApiRequest -> (Maybe a -> IO r) -> 
 doJSONRequest' env req kont =
     doRequest env req (readJsonResponseBody kont)
 
-withMethod :: ByteString -> Method -> ApiRequest
+withMethod :: BSB.Builder -> Method -> ApiRequest
 withMethod r m = ApiRequest
-    { _requestPath = BSB.byteString r
+    { _requestPath = r
     , _requestQuery = []
     , _requestAcceptable = Nothing
     , _requestSuccessful = statusIsSuccessful
