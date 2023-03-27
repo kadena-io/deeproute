@@ -119,9 +119,10 @@ withMethod r m = ApiRequest
     }
 
 infixl 1 /@
-(/@) :: ApiRequest -> ByteString -> ApiRequest
-r /@ s = r & requestPath <>~ (BSB.char8 '/' <> BSB.byteString s)
+(/@) :: BSB.Builder -> ByteString -> BSB.Builder
+r /@ s = r <> BSB.char8 '/' <> BSB.byteString s
 
 infixl 1 /@@
-(/@@) :: ToHttpApiData a => ApiRequest -> a -> ApiRequest
-r /@@ s = r & requestPath <>~ ("/" <> toEncodedUrlPiece s)
+(/@@) :: ToHttpApiData a => BSB.Builder -> a -> BSB.Builder
+r /@@ s = r <> BSB.char8 '/' <> toEncodedUrlPiece s
+
