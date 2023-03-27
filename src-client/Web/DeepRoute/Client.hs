@@ -107,6 +107,7 @@ doJSONRequest' :: FromJSON a => ClientEnv -> ApiRequest -> (Maybe a -> IO r) -> 
 doJSONRequest' env req kont =
     doRequest env req (readJsonResponseBody kont)
 
+infixl 2 `withMethod`
 withMethod :: BSB.Builder -> Method -> ApiRequest
 withMethod r m = ApiRequest
     { _requestPath = r
@@ -118,11 +119,11 @@ withMethod r m = ApiRequest
     , _requestMethod = m
     }
 
-infixl 1 /@
+infixl 3 /@
 (/@) :: BSB.Builder -> ByteString -> BSB.Builder
 r /@ s = r <> BSB.char8 '/' <> BSB.byteString s
 
-infixl 1 /@@
+infixl 3 /@@
 (/@@) :: ToHttpApiData a => BSB.Builder -> a -> BSB.Builder
 r /@@ s = r <> BSB.char8 '/' <> toEncodedUrlPiece s
 
