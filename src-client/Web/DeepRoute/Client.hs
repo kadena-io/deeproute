@@ -39,11 +39,11 @@ readJsonResponseBody kont = readLazyResponseBody (kont . decode')
 
 data ClientEnv
     = ClientEnv
-    { _host :: !ByteString
-    , _port :: !Int
-    , _secure :: !Bool
-    , _manager :: !Client.Manager
-    , _responseTimeout :: !Client.ResponseTimeout
+    { _clientEnvHost :: !ByteString
+    , _clientEnvPort :: !Int
+    , _clientEnvSecure :: !Bool
+    , _clientEnvManager :: !Client.Manager
+    , _clientEnvRequestModifier :: !(Client.Request -> Client.Request)
     }
 
 data ClientError
@@ -57,7 +57,7 @@ makeClassy ''ClientEnv
 
 data ApiRequest
     = ApiRequest
-    { _requestPath :: !BSB.Builder
+    { _requestPath :: BSB.Builder
     -- the user fills this out directly, using the toQueryParam function
     , _requestQuery :: !QueryText
     , _requestAcceptable :: !(Maybe [Quality MediaType])
@@ -65,10 +65,11 @@ data ApiRequest
     , _requestHeaders :: !RequestHeaders
     , _requestBody :: !Client.RequestBody
     , _requestMethod :: !Method
+    , _requestModifier :: !(Client.Request -> Client.Request)
     }
 
-debugPrintApiRequest (ApiRequest p q _ _ h _ m) = unwords
-    ["ApiRequest", show (BSB.toLazyByteString p), show q, show h, show m]
+debugPrintApiRequest (ApiRequest p q a _ h _ m _) = unwords
+    ["ApiRequest", show (BSB.toLazyByteString p), show q, show a, show h, show m]
 
 makeLenses ''ApiRequest
 
@@ -78,9 +79,9 @@ doRequest env req kont = do
     let req' =
             Client.defaultRequest
                 { Client.method = _requestMethod req
-                , Client.secure = _secure env
-                , Client.host = _host env
-                , Client.port = _port env
+                , Client.secure = _clientEnvSecure env
+                , Client.host = _clientEnvHost env
+                , Client.port = _clientEnvPort env
                 , Client.path = LBS.toStrict $ BSB.toLazyByteString $ _requestPath req
                 , Client.queryString = LBS.toStrict $ BSB.toLazyByteString $ renderQueryText True (_requestQuery req)
                 , Client.requestHeaders = acceptHeader <> _requestHeaders req
@@ -88,9 +89,9 @@ doRequest env req kont = do
                 , Client.checkResponse = \_ resp ->
                     let status = Client.responseStatus resp
                     in unless (_requestSuccessful req status) $ throwIO $ UnsuccessfulStatus status
-                , Client.responseTimeout = _responseTimeout env
                 }
-    Client.withResponse req' (_manager env) $ \resp -> do
+    let req'' = _requestModifier req (_clientEnvRequestModifier env req')
+    Client.withResponse req'' (_clientEnvManager env) $ \resp -> do
         let responseContentTypeHeader = parseAccept =<< lookup "Content-Type" (Client.responseHeaders resp)
         case (_requestAcceptable req, responseContentTypeHeader) of
             (Just acceptables, Just responseContentType)
@@ -101,17 +102,21 @@ doRequest env req kont = do
                     throwIO (UnacceptableResponse responseContentType)
             _ ->
                 kont resp
+{-# inlinable doRequest #-}
 
 doRequestForEffect :: ClientEnv -> ApiRequest -> IO ()
 doRequestForEffect env req = doRequest env req (const (return ()))
+{-# inline conlike doRequestForEffect #-}
 
 doJSONRequest :: FromJSON a => ClientEnv -> ApiRequest -> IO a
 doJSONRequest env req =
     doJSONRequest' env req (evaluate . fromMaybe (error "invalid response body"))
+{-# inline conlike doJSONRequest #-}
 
 doJSONRequest' :: FromJSON a => ClientEnv -> ApiRequest -> (Maybe a -> IO r) -> IO r
 doJSONRequest' env req kont =
     doRequest env req (readJsonResponseBody kont)
+{-# inline conlike doJSONRequest' #-}
 
 infixl 2 `withMethod`
 withMethod :: BSB.Builder -> Method -> ApiRequest
@@ -123,12 +128,16 @@ withMethod r m = ApiRequest
     , _requestHeaders = []
     , _requestBody = Client.RequestBodyBS mempty
     , _requestMethod = m
+    , _requestModifier = id
     }
+{-# inline conlike withMethod #-}
 
 infixl 3 /@
 (/@) :: BSB.Builder -> ByteString -> BSB.Builder
 r /@ s = r <> BSB.char8 '/' <> BSB.byteString s
+{-# inline conlike (/@) #-}
 
 infixl 3 /@@
 (/@@) :: ToHttpApiData a => BSB.Builder -> a -> BSB.Builder
 r /@@ s = r <> BSB.char8 '/' <> toEncodedUrlPiece s
+{-# inline conlike (/@@) #-}
