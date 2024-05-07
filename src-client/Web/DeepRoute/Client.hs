@@ -58,8 +58,9 @@ makeClassy ''ClientEnv
 data ApiRequest
     = ApiRequest
     { _requestPath :: !BSB.Builder
+    -- the user fills this out directly, using the toQueryParam function
     , _requestQuery :: !QueryText
-    , _requestAcceptable :: !(Maybe [MediaType])
+    , _requestAcceptable :: !(Maybe [Quality MediaType])
     , _requestSuccessful :: !(Status -> Bool)
     , _requestHeaders :: !RequestHeaders
     , _requestBody :: !Client.RequestBody
@@ -90,11 +91,14 @@ doRequest env req kont = do
                 , Client.responseTimeout = _responseTimeout env
                 }
     Client.withResponse req' (_manager env) $ \resp -> do
-        let contentTypeHeader = parseAccept =<< lookup "Content-Type" (Client.responseHeaders resp)
-        case (_requestAcceptable req, contentTypeHeader) of
-            (Just acceptables, Just contentType)
-                | all (not . (contentType `matches`)) acceptables ->
-                    throwIO (UnacceptableResponse contentType)
+        let responseContentTypeHeader = parseAccept =<< lookup "Content-Type" (Client.responseHeaders resp)
+        case (_requestAcceptable req, responseContentTypeHeader) of
+            (Just acceptables, Just responseContentType)
+                -- here we do our own "content type negotiation" with the only option
+                -- being the actually-returned content type, to determine if the response
+                -- content type was acceptable.
+                | Nothing <- matchQuality [responseContentType] acceptables ->
+                    throwIO (UnacceptableResponse responseContentType)
             _ ->
                 kont resp
 
