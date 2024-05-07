@@ -43,6 +43,7 @@ data ClientEnv
     , _port :: !Int
     , _secure :: !Bool
     , _manager :: !Client.Manager
+    , _responseTimeout :: !Client.ResponseTimeout
     }
 
 data ClientError
@@ -86,6 +87,7 @@ doRequest env req kont = do
                 , Client.checkResponse = \_ resp ->
                     let status = Client.responseStatus resp
                     in unless (_requestSuccessful req status) $ throwIO $ UnsuccessfulStatus status
+                , Client.responseTimeout = _responseTimeout env
                 }
     Client.withResponse req' (_manager env) $ \resp -> do
         let contentTypeHeader = parseAccept =<< lookup "Content-Type" (Client.responseHeaders resp)
@@ -126,4 +128,3 @@ r /@ s = r <> BSB.char8 '/' <> BSB.byteString s
 infixl 3 /@@
 (/@@) :: ToHttpApiData a => BSB.Builder -> a -> BSB.Builder
 r /@@ s = r <> BSB.char8 '/' <> toEncodedUrlPiece s
-
