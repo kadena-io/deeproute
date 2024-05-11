@@ -65,9 +65,9 @@ jsonErrorWithStatus :: ToJSON e => Status -> e -> IO a
 jsonErrorWithStatus s e =
     throwIO $ HTTPEarlyExitException s "application/json" (LBS.toStrict $ encode e)
 
-errorWithStatus :: Status -> ByteString -> IO a
+errorWithStatus :: Status -> Text -> IO a
 errorWithStatus s b =
-    throwIO $ HTTPEarlyExitException s "text/plain" b
+    throwIO $ HTTPEarlyExitException s "text/plain" (T.encodeUtf8 b)
 
 data RoutingError
     = RouteNotFound
@@ -161,7 +161,7 @@ queryParamOptional :: FromHttpApiData a => Text -> QueryParser (Maybe (QueryPara
 queryParamOptional paramName = QueryParser $ ReaderT $ \q ->
     case (traverse.traverse) parseQueryParam $ lookup paramName q of
         Left _ -> liftIO $ errorWithStatus badRequest400 $
-            "query parameter " <> T.encodeUtf8 paramName <> " has malformed value"
+            "query parameter " <> paramName <> " has malformed value"
         Right Nothing -> return Nothing
         Right (Just Nothing) -> return $ Just QueryParamNoValue
         Right (Just (Just !v)) -> return $ Just $ QueryParamValue v
@@ -179,9 +179,9 @@ queryParam paramName =
     mandatory =<< queryParamOptional paramName
     where
     mandatory Nothing = liftIO $ errorWithStatus badRequest400 $
-        "mandatory query parameter " <> T.encodeUtf8 paramName <> " not included in URL"
+        "mandatory query parameter " <> paramName <> " not included in URL"
     mandatory (Just QueryParamNoValue) = liftIO $ errorWithStatus badRequest400 $
-        "mandatory query parameter " <> T.encodeUtf8 paramName <> " included in URL but has no value"
+        "mandatory query parameter " <> paramName <> " included in URL but has no value"
     mandatory (Just (QueryParamValue a)) = return a
 
 newtype MT = MT MediaType
