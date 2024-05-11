@@ -23,6 +23,7 @@ import qualified Network.HTTP.Client.Internal as Client
 import Network.HTTP.Media
 import Network.HTTP.Types
 import Web.HttpApiData
+import Network.HTTP.Client (Response(responseBody))
 
 readLazyResponseBody :: (LBS.ByteString -> IO r) -> Client.Response Client.BodyReader -> IO r
 readLazyResponseBody kont resp = do
@@ -34,8 +35,8 @@ readLazyResponseBody kont resp = do
         if BS.null next then return mempty
         else LBS.chunk next <$> brLazy br
 
-readJsonResponseBody :: FromJSON a => (Maybe a -> IO r) -> Client.Response Client.BodyReader -> IO r
-readJsonResponseBody kont = readLazyResponseBody (kont . decode')
+readJsonResponseBody :: FromJSON a => Client.Response Client.BodyReader -> IO (Maybe a)
+readJsonResponseBody = readLazyResponseBody (evaluate . decode')
 
 data ClientEnv
     = ClientEnv
@@ -108,14 +109,18 @@ doRequestForEffect :: ClientEnv -> ApiRequest -> IO ()
 doRequestForEffect env req = doRequest env req (const (return ()))
 {-# inline conlike doRequestForEffect #-}
 
-doJSONRequest :: FromJSON a => ClientEnv -> ApiRequest -> IO a
-doJSONRequest env req =
-    doJSONRequest' env req (evaluate . fromMaybe (error "invalid response body"))
-{-# inline conlike doJSONRequest #-}
+doJSONRequest :: FromJSON a => ClientEnv -> ApiRequest -> IO (Client.Response a)
+doJSONRequest env req = do
+    resp <- doJSONRequest' env req
+    body' <- evaluate $ fromMaybe (error "invalid json in response") $ responseBody resp
+    return resp { responseBody = body' }
+{-# inlinable doJSONRequest #-}
 
-doJSONRequest' :: FromJSON a => ClientEnv -> ApiRequest -> (Maybe a -> IO r) -> IO r
-doJSONRequest' env req kont =
-    doRequest env req (readJsonResponseBody kont)
+doJSONRequest' :: FromJSON a => ClientEnv -> ApiRequest -> IO (Client.Response (Maybe a))
+doJSONRequest' env req =
+    doRequest env req $ \resp -> do
+        json <- readJsonResponseBody resp
+        return resp { responseBody = json }
 {-# inline conlike doJSONRequest' #-}
 
 infixl 2 `withMethod`
