@@ -127,11 +127,11 @@ noMoreChoices :: Route a
 noMoreChoices = Route $ \lose _ _ _ _ _ _ -> lose RouteNotFound
 {-# inline noMoreChoices #-}
 
-terminus :: Method -> MediaType -> a -> Route a
-terminus m mt a = terminus' [(m, mt, a)]
+endpoint :: Method -> MediaType -> a -> Route a
+endpoint m mt a = endpoint' [(m, mt, a)]
 
-terminus' :: forall a. [(Method, MediaType, a)] -> Route a
-terminus' xs = Route $ \lose win meth maybeAccept (HeadAlteration hd) (OptionsResponse opts) path ->
+endpoint' :: forall a. [(Method, MediaType, a)] -> Route a
+endpoint' xs = Route $ \lose win meth maybeAccept (HeadAlteration hd) (OptionsResponse opts) path ->
     let
         withMethod m = [ (MT rmt, (rm, rmt, ra)) | (rm, rmt, ra) <- xs, rm == m ]
         route m notAcceptable wrongMethod w
@@ -148,7 +148,7 @@ terminus' xs = Route $ \lose win meth maybeAccept (HeadAlteration hd) (OptionsRe
             | meth == methodHead -> route methodHead (lose NotAcceptable) (route methodGet (lose NotAcceptable) (lose WrongMethod) hd) win
             | otherwise -> route meth (lose NotAcceptable) (lose WrongMethod) win
         _ -> lose RouteNotFound
-{-# inline terminus #-}
+{-# inline endpoint #-}
 
 data QueryParam a
     = QueryParamNoValue
