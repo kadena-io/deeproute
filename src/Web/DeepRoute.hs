@@ -1,26 +1,16 @@
 
 {-# LANGUAGE AllowAmbiguousTypes #-}
 {-# LANGUAGE BangPatterns #-}
-{-# LANGUAGE DefaultSignatures #-}
 {-# LANGUAGE DeriveAnyClass #-}
-{-# LANGUAGE DeriveFoldable #-}
-{-# LANGUAGE DeriveFunctor #-}
-{-# LANGUAGE DeriveGeneric #-}
-{-# LANGUAGE DeriveTraversable #-}
 {-# LANGUAGE DerivingStrategies #-}
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE GADTs #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
-{-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE ScopedTypeVariables #-}
-{-# LANGUAGE TemplateHaskell #-}
-{-# LANGUAGE TupleSections #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
-{-# LANGUAGE StandaloneDeriving #-}
-{-# LANGUAGE TypeApplications #-}
 
 -- |
 -- Module: Web.DeepRoute
@@ -103,13 +93,13 @@ instance Semigroup (Route a) where
         in runRoute f fallback win meth accept hd opts path
     {-# INLINE (<>) #-}
 
-choice :: Text -> Route a -> Route a
-choice thisEle thisRoute = Route $ \lose win meth accept hd opts path ->
+seg :: Text -> Route a -> Route a
+seg thisEle thisRoute = Route $ \lose win meth accept hd opts path ->
     case path of
         ele : rest | ele == thisEle ->
             runRoute thisRoute lose win meth accept hd opts rest
         _ -> lose RouteNotFound
-{-# inline choice #-}
+{-# inline seg #-}
 
 capture :: forall e a. FromHttpApiData e => Route (e -> a) -> Route a
 capture inner = capture' parseUrlPieceMaybe inner
@@ -127,8 +117,13 @@ noMoreChoices :: Route a
 noMoreChoices = Route $ \lose _ _ _ _ _ _ -> lose RouteNotFound
 {-# inline noMoreChoices #-}
 
+jsonEndpoint :: Method -> a -> Route a
+jsonEndpoint m a = endpoint m "application/json" a
+{-# inline jsonEndpoint #-}
+
 endpoint :: Method -> MediaType -> a -> Route a
 endpoint m mt a = endpoint' [(m, mt, a)]
+{-# inline endpoint #-}
 
 endpoint' :: forall a. [(Method, MediaType, a)] -> Route a
 endpoint' xs = Route $ \lose win meth maybeAccept (HeadAlteration hd) (OptionsResponse opts) path ->
@@ -148,7 +143,7 @@ endpoint' xs = Route $ \lose win meth maybeAccept (HeadAlteration hd) (OptionsRe
             | meth == methodHead -> route methodHead (lose NotAcceptable) (route methodGet (lose NotAcceptable) (lose WrongMethod) hd) win
             | otherwise -> route meth (lose NotAcceptable) (lose WrongMethod) win
         _ -> lose RouteNotFound
-{-# inline endpoint #-}
+{-# inline endpoint' #-}
 
 data QueryParam a
     = QueryParamNoValue

@@ -2,8 +2,6 @@
 {-# language LambdaCase #-}
 {-# language OverloadedStrings #-}
 {-# language DerivingStrategies #-}
-{-# language GeneralizedNewtypeDeriving #-}
-{-# language ViewPatterns #-}
 
 module Web.DeepRoute.Wai
     ( responseJSON
@@ -45,7 +43,7 @@ responseJSON s rh = Wai.responseLBS s rh . encode
 requestFromJSON :: FromJSON a => Wai.Request -> IO a
 requestFromJSON req =
     decode' <$> Wai.lazyRequestBody req >>= \case
-        Just !decodedBody ->
+        Just !decodedBody -> do
             return decodedBody
         Nothing ->
             errorWithStatus badRequest400 "invalid request body"
