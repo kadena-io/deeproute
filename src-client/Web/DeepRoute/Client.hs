@@ -76,13 +76,13 @@ bodyReaderToLazyByteString reader = do
 
 -- this isn't lazy really, but it does at least interleave response body
 -- consumption with parsing.
-jsonBody :: FromJSON a => LazyByteString -> IO (Either AesonException a)
-jsonBody bytes =
+jsonResponseBody :: FromJSON a => LazyByteString -> IO (Either AesonException a)
+jsonResponseBody bytes =
     bitraverse evaluate evaluate $
         over _Left AesonException (eitherDecode' bytes)
 
-bytesBody :: LazyByteString -> IO ByteString
-bytesBody = evaluate . LBS.toStrict
+bytesResponseBody :: LazyByteString -> IO ByteString
+bytesResponseBody = evaluate . LBS.toStrict
 
 data ClientEnv
     = ClientEnv
@@ -187,6 +187,8 @@ defaultResponseChecks req resp = do
     checkAcceptable req resp
 {-# inline defaultResponseChecks #-}
 
+-- | Make an ApiRequest to the target server. Return 'Left' for an
+-- invalid response body or error response status.
 doRequestEither
     :: ClientEnv
     -> ApiRequest (Either e a)
@@ -197,6 +199,8 @@ doRequestEither env req = doRequestParsed env req $ \resp ->
         traverse (either (throwError . UserClientError) return) resp
 {-# inlinable doRequestEither #-}
 
+-- | Make an ApiRequest to the target server. Throw an exception for an invalid
+-- response body or error response status.
 doRequestThrow
     :: (Typeable e, Show e)
     => ClientEnv
@@ -207,7 +211,8 @@ doRequestThrow env req =
         doRequestEither env req
 {-# inlinable doRequestThrow #-}
 
--- Careful! Status and returned content type both go unchecked.
+-- | Make an ApiRequest to the target server. Careful! Status and response
+-- content type both go unchecked.
 doRequestUnchecked
     :: ClientEnv
     -> ApiRequest a

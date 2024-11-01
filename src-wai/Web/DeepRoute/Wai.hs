@@ -74,7 +74,10 @@ routeWaiApp req resp fallback tree =
         errorWithStatus notAcceptable406 ""
     win ct app =
         app req (resp . setContentType ct)
-    setContentType mt =
+    -- if there is no response body, do not set the content type
+    setContentType Nothing =
+        id
+    setContentType (Just mt) =
         -- this only works if we don't use the "raw" Wai response type.
         Wai.mapResponseHeaders (\hs -> cth : [h | h@(n,_) <- hs, n /= "Content-Type"])
         where
@@ -96,7 +99,7 @@ jsonApp k req resp =
         =<< k
         =<< requestFromJSON req
 
-getParams :: Wai.Request -> QueryParser a -> IO a
-getParams req (QueryParser parser) = runReaderT parser query
+getParams :: Wai.Request -> QueryParamParser a -> IO a
+getParams req (QueryParamParser parser) = runReaderT parser query
     where
     query = queryToQueryText $ Wai.queryString req
