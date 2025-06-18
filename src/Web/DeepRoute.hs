@@ -75,25 +75,39 @@ data HTTPEarlyExitException
     deriving stock (Show)
     deriving anyclass (Exception)
 
+-- | Throw an error, which sends a response with some status code and the given
+-- JSON as the response body.
 jsonErrorWithStatus :: ToJSON e => Status -> e -> IO a
 jsonErrorWithStatus s e =
     throwIO $ HTTPEarlyExitException s "application/json" (LBS.toStrict $ encode e)
 
+-- | Throw an error, which sends a response with some status code and the given
+-- text as the response body.
 errorWithStatus :: Status -> Text -> IO a
 errorWithStatus s b =
     throwIO $ HTTPEarlyExitException s "text/plain" (T.encodeUtf8 b)
 
+-- | Routing errors which can be triggered during the course of routing. Some
+-- can be recovered from.
 data RoutingError
     = RouteNotFound
     | WrongMethod
     | InvalidUrlPathPiece Text
     | NotAcceptable
 
+-- | A request may state which content-types it would find acceptable in a
+-- response.
 newtype AcceptHeader = AcceptHeader ByteString
 
+-- | The HEAD HTTP method is like GET, but it should have no response body.
 newtype HeadAlteration a r = HeadAlteration (Maybe MediaType -> a -> r)
+
+-- | The OPTIONS HTTP method responds with methods allowed for the endpoint.
 newtype OptionsResponse r = OptionsResponse ([Method] -> r)
 
+-- | A `Route a` is a routing tree which, after routing is complete, produces an `a`.
+-- Usually, that's a wai `Application`.
+-- Use `seg`, `<>`, and `capture` to create and compose `Route`s.
 newtype Route a = Route
     { runRoute
         :: forall r. (RoutingError -> r) -> (Maybe MediaType -> a -> r)
@@ -211,6 +225,7 @@ data QueryParam a
 newtype QueryParamParser a = QueryParamParser (ReaderT QueryText IO a)
     deriving newtype (Functor, Applicative, Monad, MonadIO)
 
+-- | A parser that parses an optional query parameter.
 queryParamOptional :: FromHttpApiData a => Text -> QueryParamParser (Maybe (QueryParam a))
 queryParamOptional paramName = QueryParamParser $ ReaderT $ \q ->
     case (traverse.traverse) parseQueryParam $ lookup paramName q of
@@ -220,6 +235,8 @@ queryParamOptional paramName = QueryParamParser $ ReaderT $ \q ->
         Right (Just Nothing) -> return $ Just QueryParamNoValue
         Right (Just (Just v)) -> return $ Just $ QueryParamValue v
 
+-- | A parser that parses an optional query parameter, but treats a query
+-- parameter with no value as being the same as a missing query parameter.
 queryParamMaybe :: FromHttpApiData a => Text -> QueryParamParser (Maybe a)
 queryParamMaybe paramName =
     collapseNoValue <$> queryParamOptional paramName
@@ -228,6 +245,7 @@ queryParamMaybe paramName =
     collapseNoValue (Just (QueryParamValue v)) = Just v
     collapseNoValue Nothing = Nothing
 
+-- | A parser that parses a mandatory query parameter which must have a value.
 queryParam :: FromHttpApiData a => Text -> QueryParamParser a
 queryParam paramName =
     mandatory =<< queryParamOptional paramName
@@ -238,6 +256,7 @@ queryParam paramName =
         "mandatory query parameter " <> paramName <> " included in URL but has no value"
     mandatory (Just (QueryParamValue a)) = return a
 
+-- | This newtype exists solely because of the below hack dealing with application/json.
 newtype MT = MT MediaType
     deriving newtype Show
 
@@ -251,6 +270,9 @@ instance Accept MT where
         normalizedParameters mt
             | mainType mt == "application"
             , subType mt == "json"
+                -- we remove the `utf-8` from an `application/json` media type
+                -- because utf-8 is mandatory for JSON regardless. this may be
+                -- removed in future.
                 = Map.alter (removeCharsetUtf8 mt) "charset" (parameters mt)
             | otherwise = parameters mt
         removeCharsetUtf8 mt (Just "utf-8") = Nothing
