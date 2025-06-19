@@ -8,8 +8,8 @@
 
 module Web.DeepRoute.Client
     ( bodyReaderToLazyByteString
-    , jsonBody
-    , bytesBody
+    , jsonResponseBody
+    , bytesResponseBody
     , ClientEnv(..)
     , ClientError(..)
     , doRequestParsed
@@ -218,7 +218,7 @@ doRequestUnchecked
     -> ApiRequest a
     -> IO (Client.Response ByteString)
 doRequestUnchecked env req =
-    doRequestParsed env req { _requestResponseParser = traverse bytesBody }  return
+    doRequestParsed env req { _requestResponseParser = traverse bytesResponseBody }  return
 {-# inlinable doRequestUnchecked #-}
 
 infixl 3 /@
